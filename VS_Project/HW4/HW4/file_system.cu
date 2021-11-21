@@ -3,7 +3,9 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <cassert>
+
+#define EMPTY_FILE_NAME "cqh_default"
 
 __device__ __managed__ u32 gtime = 0;
 
@@ -16,16 +18,6 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, int SUPERBLOCK_SIZE,
 	int STORAGE_BLOCK_SIZE, int MAX_FILENAME_SIZE,
 	int MAX_FILE_NUM, int MAX_FILE_SIZE_TOT, int FILE_BASE_ADDRESS)
 {
-	// init variables
-	fs->volume = volume;
-	fs->bitmap = (BitMap*)volume;
-	fs->bitmap->init();
-	for (int i = 0; i < FCB_ENTRIES; ++i)
-	{
-		fs->fcb[i] = (FCB*)(volume + SUPERBLOCK_SIZE + i * FCB_SIZE);
-		RESET_FCB(fs->fcb[i]);
-	}
-
 	// init constants
 	fs->SUPERBLOCK_SIZE = SUPERBLOCK_SIZE;
 	fs->FCB_SIZE = FCB_SIZE;
@@ -37,6 +29,17 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, int SUPERBLOCK_SIZE,
 	fs->MAX_FILE_SIZE_TOT = MAX_FILE_SIZE_TOT;
 	fs->FILE_BASE_ADDRESS = FILE_BASE_ADDRESS;
 
+	// init variables
+	fs->volume = volume;
+	fs->bitmap = (BitMap*)volume;
+	fs->bitmap->init();
+	for (int i = 0; i < FCB_ENTRIES; ++i)
+	{
+		fs->fcb[i] = (FCB*)(volume + SUPERBLOCK_SIZE + i * FCB_SIZE);
+		RESET_FCB(fs->fcb[i]);
+	}
+	assert(((uchar*)(&fs->fcb[FCB_ENTRIES - 1]->allocated_blocks) - volume) == SUPERBLOCK_SIZE + FCB_SIZE * FCB_ENTRIES - 1); // struct correctness
+	assert(sizeof(*(fs->fcb[0])) == 32);// struct correctness
 }
 
 __device__ FCB* FindFile(FileSystem* fs, char* s)
@@ -90,12 +93,11 @@ __device__ u32 fs_close(FileSystem* fs, u32 fp)
 	}
 }
 
-__device__ char* my_strcpy(char* dest, const char* src) {
+__device__ void my_strcpy(char* dest, const char* src) {
 	int i = 0;
 	do {
 		dest[i] = src[i];
 	} while (src[i++] != 0);
-	return dest;
 }
 
 #pragma endregion
@@ -114,7 +116,7 @@ __device__ void Free_DataBlock_BitMap(FileSystem* fs, FCB* t_FCB)
 __device__ void RESET_FCB(FCB* t_FCB)
 {
 	t_FCB->allocated_blocks = 0;
-	strcpy(t_FCB->filename, "");
+	my_strcpy(t_FCB->filename, EMPTY_FILE_NAME);
 	t_FCB->modified_time = 0;
 	t_FCB->open_mode = G_READ;
 	t_FCB->size = 0;
@@ -174,7 +176,7 @@ __device__ u32 FindFreeFCB(FileSystem* fs)
 {
 	for (int i = 0; i < fs->FCB_ENTRIES; ++i)
 	{
-		if (fs->fcb[i]->filename == "")
+		if (fs->fcb[i]->filename == EMPTY_FILE_NAME)
 		{
 			return i;
 		}
@@ -260,7 +262,7 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 		printf("=====Sort by modified time=======\n");
 		for (int i = 0; i < fs->FCB_ENTRIES; ++i)
 		{
-			if (fs->fcb[i]->filename != "")
+			if (fs->fcb[i]->filename != EMPTY_FILE_NAME)
 			{
 				printf("%s  %d\n", fs->fcb[i]->filename, fs->fcb[i]->modified_time);
 			}
@@ -272,7 +274,7 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 		printf("=======Sort by size=======\n");
 		for (int i = 0; i < fs->FCB_ENTRIES; ++i)
 		{
-			if (fs->fcb[i]->filename != "")
+			if (fs->fcb[i]->filename != EMPTY_FILE_NAME)
 			{
 				printf("%s  %d\n", fs->fcb[i]->filename, fs->fcb[i]->size);
 			}

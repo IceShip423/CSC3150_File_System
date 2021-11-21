@@ -1,10 +1,9 @@
 ﻿#include "file_system.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cstdio>
 
 __device__ void user_program(FileSystem* fs, uchar* input, uchar* output) {
-
-
 	/////////////// Test Case 1  ///////////////
 	u32 fp = fs_open(fs, "t.txt\0", G_WRITE);
 	fs_write(fs, input, 64, fp);

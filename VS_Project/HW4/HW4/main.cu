@@ -42,7 +42,9 @@ __global__ void mykernel(uchar* input, uchar* output) {
 		MAX_FILE_NUM, MAX_FILE_SIZE_TOT, FILE_BASE_ADDRESS);
 
 	// user program the access pattern for testing file operations
+	/*
 	user_program(&fs, input, output);
+	*/
 }
 
 __host__ void write_binaryFile(char* fileName, void* buffer, int bufferSize)

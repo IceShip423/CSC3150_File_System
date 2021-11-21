@@ -1,5 +1,5 @@
-﻿#ifndef VIRTUAL_MEMORY_H
-#define VIRTUAL_MEMORY_H
+﻿#ifndef FILE_SYSTEM_H
+#define FILE_SYSTEM_H
 
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -23,12 +23,12 @@ typedef uint8_t u8;
 #define RM_RF 7
 
 struct FCB { // 32B
-	char filename[20];
-	u32 staring_block;
-	u32 size; // in byte
-	u16 modified_time;
-	u8 open_mode;
-	u8 allocated_blocks;
+	char filename[20]; // 20B
+	u32 staring_block; // 4B
+	u32 size; // 4B, size is in byte 
+	u16 modified_time; // 2B
+	u8 open_mode; // 1B
+	u8 allocated_blocks; // 1B 
 };
 
 struct BitMap {
@@ -104,7 +104,5 @@ __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp);
 __device__ void fs_gsys(FileSystem* fs, int op);
 __device__ void fs_gsys(FileSystem* fs, int op, char* s);
 
-__device__ void user_program(FileSystem* fs, uchar* input, uchar* output);
-__device__ void user_program_b(FileSystem* fs, uchar* input, uchar* output);
 
 #endif
