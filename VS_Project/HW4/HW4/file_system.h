@@ -4,6 +4,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <inttypes.h>
+#include <cstdio>
 
 typedef unsigned char uchar;
 typedef uint32_t u32;
@@ -32,18 +33,18 @@ struct FCB { // 32B
 };
 
 struct BitMap {
-	u32 data[1024]; 
-	inline __device__ bool is_free(u32 bitnum)
+	u32 data[1024];
+	inline __device__ bool is_free(u32 bit_idx)
 	{
-		return data[bitnum / 32] >> (bitnum % 32) & 1;// 1 is free
+		return (data[bit_idx / 32] >> (bit_idx % 32)) & 1;// 1 is free
 	}
-	inline __device__ bool set_empty(u32 bitnum)
+	inline __device__ bool set_free(u32 bit_idx)
 	{
-		data[bitnum / 32] |= 1 << (bitnum % 32);
+		data[bit_idx / 32] |= 1 << (bit_idx % 32);
 	}
-	inline __device__ bool set_allocated(u32 bitnum)
+	inline __device__ bool set_allocated(u32 bit_idx)
 	{
-		data[bitnum / 32] &= ~(1 << (bitnum % 32));
+		data[bit_idx / 32] &= ~(1 << (bit_idx % 32));
 	}
 	__device__ void init()
 	{
@@ -52,25 +53,26 @@ struct BitMap {
 			data[i] = 0xFFFFFFFF;
 		}
 	}
-	__device__ u32 FindFree(u32 start_bitnum)
+	__device__ u32 FindFree(u32 start_bit_idx)
 	{
-#define MAX_BLOCK_NUM 2<<15
 		u32 i;
-		for (i = start_bitnum; i < MAX_BLOCK_NUM; ++i)
+		// printf("[%d %d]\n", data[0], data[1]);
+		for (i = start_bit_idx; i < 32768; ++i)
 		{
 			if (is_free(i)) break;
 		}
 		return i;
 	}
-	__device__ u32 FindAllocated(u32 start_bitnum)
+	__device__ u32 FindAllocated(u32 start_bit_idx)
 	{
 		u32 i;
-		for (i = start_bitnum; i < MAX_BLOCK_NUM; ++i)
+		// printf("[%d %d]\n", data[0], data[1]);
+		for (i = start_bit_idx; i < 32768; ++i)
 		{
 			if (!is_free(i)) break;
 		}
 		return i;
-#undef MAX_BLOCK_NUM
+#undef t_BLOCK_NUM
 	}
 };
 
@@ -80,23 +82,24 @@ struct FileSystem {
 	FCB* fcb[1024];
 
 	int SUPERBLOCK_SIZE;
-	int FCB_SIZE;
+	int PER_FCB_SIZE;
 	int FCB_ENTRIES;
 	int VOLUME_SIZE;
-	int STORAGE_BLOCK_SIZE;
-	int MAX_FILENAME_SIZE;
+	int PER_STORAGE_BLOCK_SIZE;
+	int MAX_PER_FILENAME_SIZE;
 	int MAX_FILE_NUM;
-	int MAX_FILE_SIZE_TOT;
-	int FILE_BASE_ADDRESS;
+	int DATA_BLOCK_SIZE;
+	int DATA_BLOCK_VOLUME_OFFSET;
+	int DATA_BLOCK_NUM;
 };
 
 
 
 
 __device__ void fs_init(FileSystem* fs, uchar* volume, int SUPERBLOCK_SIZE,
-	int FCB_SIZE, int FCB_ENTRIES, int VOLUME_SIZE,
-	int STORAGE_BLOCK_SIZE, int MAX_FILENAME_SIZE,
-	int MAX_FILE_NUM, int MAX_FILE_SIZE_TOT, int FILE_BASE_ADDRESS);
+	int PER_FCB_SIZE, int FCB_ENTRIES, int VOLUME_SIZE,
+	int PER_STORAGE_BLOCK_SIZE, int MAX_PER_FILENAME_SIZE,
+	int MAX_FILE_NUM, int DATA_BLOCK_SIZE, int DATA_BLOCK_VOLUME_OFFSET, int DATA_BLOCK_NUM);
 
 __device__ u32 fs_open(FileSystem* fs, char* s, int op);
 __device__ void fs_read(FileSystem* fs, uchar* output, u32 size, u32 fp);
@@ -104,5 +107,8 @@ __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp);
 __device__ void fs_gsys(FileSystem* fs, int op);
 __device__ void fs_gsys(FileSystem* fs, int op, char* s);
 
+
+
+__device__ void show_FCB( FCB* t_FCB);
 
 #endif

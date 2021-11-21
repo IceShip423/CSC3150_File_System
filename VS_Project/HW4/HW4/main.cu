@@ -10,25 +10,26 @@
 #define OUTFILE "./snapshot.bin"
 
 #define SUPERBLOCK_SIZE 4096 //32K/8 bits = 4 K
-#define FCB_SIZE 32 //32 bytes per FCB
+#define PER_FCB_SIZE 32 //32 bytes per FCB
 #define FCB_ENTRIES 1024
 #define VOLUME_SIZE 1085440 //4096+32768+1048576=1060KB
-#define STORAGE_BLOCK_SIZE 32
+#define PER_STORAGE_BLOCK_SIZE 32
 
-#define MAX_FILENAME_SIZE 20
+#define MAX_PER_FILENAME_SIZE 20
 #define MAX_FILE_NUM 1024
-#define MAX_FILE_SIZE_TOT 1048576 // ????
+#define DATA_BLOCK_SIZE 1048576 // ????
 
-#define FILE_BASE_ADDRESS 36864 //4096+32768
+#define DATA_BLOCK_VOLUME_OFFSET 36864 //4096+32768
+
+#define DATA_BLOCK_NUM 32768
 
 
 // data input and output
-__device__ __managed__ uchar input[MAX_FILE_SIZE_TOT];
-__device__ __managed__ uchar output[MAX_FILE_SIZE_TOT];
+__device__ __managed__ uchar input[DATA_BLOCK_SIZE];
+__device__ __managed__ uchar output[DATA_BLOCK_SIZE];
 
 // volume (disk storage)
 __device__ __managed__ uchar volume[VOLUME_SIZE];
-
 
 
 __device__ void user_program(FileSystem* fs, uchar* input, uchar* output);
@@ -37,14 +38,12 @@ __global__ void mykernel(uchar* input, uchar* output) {
 
 	// Initilize the file system	
 	FileSystem fs;
-	fs_init(&fs, volume, SUPERBLOCK_SIZE, FCB_SIZE, FCB_ENTRIES,
-		VOLUME_SIZE, STORAGE_BLOCK_SIZE, MAX_FILENAME_SIZE,
-		MAX_FILE_NUM, MAX_FILE_SIZE_TOT, FILE_BASE_ADDRESS);
+	fs_init(&fs, volume, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
+		VOLUME_SIZE, PER_STORAGE_BLOCK_SIZE, MAX_PER_FILENAME_SIZE,
+		MAX_FILE_NUM, DATA_BLOCK_SIZE, DATA_BLOCK_VOLUME_OFFSET, DATA_BLOCK_NUM);
 
 	// user program the access pattern for testing file operations
-	/*
 	user_program(&fs, input, output);
-	*/
 }
 
 __host__ void write_binaryFile(char* fileName, void* buffer, int bufferSize)
@@ -87,7 +86,7 @@ __host__ int load_binaryFile(char* fileName, void* buffer, int bufferSize)
 
 int main() {
 	cudaError_t cudaStatus;
-	load_binaryFile(DATAFILE, input, MAX_FILE_SIZE_TOT);
+	load_binaryFile(DATAFILE, input, DATA_BLOCK_SIZE);
 
 	// Launch to GPU kernel with single thread
 	mykernel << <1, 1 >> > (input, output);
@@ -102,7 +101,7 @@ int main() {
 	cudaDeviceSynchronize();
 	cudaDeviceReset();
 
-	write_binaryFile(OUTFILE, output, MAX_FILE_SIZE_TOT);
+	write_binaryFile(OUTFILE, output, DATA_BLOCK_SIZE);
 
 
 	return 0;
