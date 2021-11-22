@@ -19,11 +19,12 @@ __device__ bool my_strcmp(const char* x, const char* y);
 
 #pragma region Other Methods
 
-__device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, int SUPERBLOCK_SIZE,
+__device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB,STACK* FCB_stack, int SUPERBLOCK_SIZE,
 	int PER_FCB_SIZE, int FCB_ENTRIES, int VOLUME_SIZE,
 	int PER_STORAGE_BLOCK_SIZE, int MAX_PER_FILENAME_SIZE,
 	int MAX_FILE_NUM, int DATA_BLOCK_SIZE, int DATA_BLOCK_VOLUME_OFFSET, int DATA_BLOCK_NUM)
 {
+	printf("gaga");
 	// init constants
 	fs->SUPERBLOCK_SIZE = SUPERBLOCK_SIZE;
 	fs->PER_FCB_SIZE = PER_FCB_SIZE;
@@ -36,6 +37,7 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, int SUPERB
 	fs->DATA_BLOCK_VOLUME_OFFSET = DATA_BLOCK_VOLUME_OFFSET;
 	fs->DATA_BLOCK_NUM = DATA_BLOCK_NUM;
 
+	printf("gaga");
 	// init variables
 	fs->volume = volume;
 	fs->bitmap = (BitMap*)volume;
@@ -53,12 +55,14 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, int SUPERB
 		fs->edge[i]->FCB_idx = FCB_IDX_NULL;
 		fs->edge[i]->next_edge = EDGE_IDX_NULL;
 	}
+	printf("gaga");
 	// root
 	fs->root_FCB = root_FCB;
 	RESET_FCB(fs->root_FCB);
 	fs->root_FCB->open_mode = DIR;
-	fs->cur_FCB.cnt = 0;
-	fs->cur_FCB.push(fs->root_FCB);
+	fs->FCB_stack = FCB_stack;
+	fs->FCB_stack->cnt = 0;
+	fs->FCB_stack->push(fs->root_FCB);
 	// struct correctness
 	//printf("%lld\n", sizeof(*(fs->fcb[0])));
 	assert(sizeof(*(fs->fcb[0])) == 32);
@@ -69,8 +73,9 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, int SUPERB
 __device__ FCB* FindFile(FileSystem* fs, char* s, FCB* t_dir)
 {
 	assert(t_dir->open_mode == DIR);
-	for (u16 edge_idx = t_dir->first_edge; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
+	for (u16 edge_idx = t_dir->first_edge_idx; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
 	{
+		printf("3434[%d]",edge_idx);
 		FCB* child_FCB = fs->fcb[fs->edge[edge_idx]->FCB_idx];
 		if (my_strcmp(child_FCB->filename, s))
 		{
@@ -144,6 +149,31 @@ __device__ void Free_DataBlock_BitMap(FileSystem* fs, FCB* t_FCB)
 	}
 }
 
+__device__ void delete_in_directory(FileSystem* fs, FCB* parent_FCB, u16 FCB_idx)
+{
+	if (fs->edge[parent_FCB->first_edge_idx]->FCB_idx == FCB_idx)
+	{
+		u16 edge_idx = parent_FCB->first_edge_idx;
+		parent_FCB->first_edge_idx = fs->edge[edge_idx]->next_edge;
+		fs->edge[edge_idx]->FCB_idx = FCB_IDX_NULL;
+		fs->edge[edge_idx]->next_edge = EDGE_IDX_NULL;
+		return;
+	}
+	u16 previous_edge_idx = parent_FCB->first_edge_idx;
+	for (u16 edge_idx = fs->edge[previous_edge_idx]->next_edge; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
+	{
+		if (fs->edge[edge_idx]->FCB_idx == FCB_idx)
+		{
+			fs->edge[previous_edge_idx]->next_edge = fs->edge[edge_idx]->next_edge;
+			fs->edge[edge_idx]->FCB_idx = FCB_IDX_NULL;
+			fs->edge[edge_idx]->next_edge = EDGE_IDX_NULL;
+			return;
+		}
+		previous_edge_idx = edge_idx;
+	}
+	assert(false);
+}
+
 __device__ void RESET_FCB(FCB* t_FCB)
 {
 	t_FCB->allocated_blocks = 0;
@@ -152,7 +182,7 @@ __device__ void RESET_FCB(FCB* t_FCB)
 	t_FCB->open_mode = G_READ;
 	t_FCB->size = 0;
 	t_FCB->starting_block = 0;
-	t_FCB->first_edge = EDGE_IS_EMPTY;
+	t_FCB->first_edge_idx = EDGE_IDX_NULL;
 }
 
 __host__ __device__ bool FCB_start_block_cmp(const FCB* o1, const FCB* o2)
@@ -263,21 +293,50 @@ __device__ void dir_add_edge(FileSystem* fs, FCB* parent_dir, FCB* child)
 {
 	assert(parent_dir->open_mode == DIR);
 	u16 edge_idx = find_empty_edge(fs);
-	fs->edge[edge_idx]->FCB_idx = parent_dir->FCB_idx;
-	fs->edge[edge_idx]->next_edge = parent_dir->first_edge;
-	parent_dir->first_edge = edge_idx;
+	fs->edge[edge_idx]->FCB_idx = child->FCB_idx;
+	fs->edge[edge_idx]->next_edge = parent_dir->first_edge_idx;
+	parent_dir->first_edge_idx = edge_idx;
 }
 
 __device__ u16 calculate_directory_size(FileSystem* fs, FCB* t_dir)
 {
 	assert(t_dir->open_mode == DIR);
 	u16 size = 0;
-	for (u16 edge_idx = t_dir->first_edge; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
+	for (u16 edge_idx = t_dir->first_edge_idx; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
 	{
 		FCB* child_FCB = fs->fcb[fs->edge[edge_idx]->FCB_idx];
 		size += my_strlen(child_FCB->filename) + 1; // include '\0'
 	}
 	return size;
+}
+
+__device__ void remove_file(FileSystem* fs, FCB* t_FCB)
+{
+	assert(t_FCB != NULL);
+	assert(t_FCB->open_mode == G_READ || t_FCB->open_mode == G_WRITE);
+	Free_DataBlock_BitMap(fs, t_FCB);
+	RESET_FCB(t_FCB);
+	delete_in_directory(fs, fs->FCB_stack->top(), t_FCB->FCB_idx);
+}
+
+__device__ void remove_dir(FileSystem* fs, FCB* t_FCB)
+{
+	assert(t_FCB != NULL);
+	assert(t_FCB->open_mode == DIR);
+	for (u16 edge_idx = t_FCB->first_edge_idx; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
+	{
+		FCB* child_FCB = fs->fcb[fs->edge[edge_idx]->FCB_idx];
+		if (child_FCB->open_mode == DIR)
+		{
+			remove_dir(fs, t_FCB);
+		}
+		else
+		{
+			remove_file(fs, t_FCB);
+		}
+	}
+	RESET_FCB(t_FCB);
+	delete_in_directory(fs, fs->FCB_stack->top(), t_FCB->FCB_idx);
 }
 
 #pragma endregion
@@ -308,8 +367,8 @@ __device__ u32 fs_close(FileSystem* fs, u32 fp)
 
 __device__ u32 fs_open(FileSystem* fs, char* s, int op)
 {
-	gtime++;
-	FCB* t_FCB = FindFile(fs, s, fs->cur_FCB.top());
+	FCB* t_FCB = FindFile(fs, s, fs->FCB_stack->top());
+	printf("12121");
 	if (t_FCB == NULL)
 	{
 		assert(op == G_WRITE);
@@ -317,17 +376,18 @@ __device__ u32 fs_open(FileSystem* fs, char* s, int op)
 		u32 block_num_wanted = 1024 / fs->PER_STORAGE_BLOCK_SIZE;
 		u32 start_block = FindFreeBlock(fs, block_num_wanted);
 		u32 t_FCB_idx = FindFreeFCB(fs);
-		//printf("[new]  start_block:%d  t_FCB_idx:%d\n", start_block, t_FCB_idx);
+		printf("[new]  start_block:%d  t_FCB_idx:%d\n", start_block, t_FCB_idx);
 		t_FCB = fs->fcb[t_FCB_idx];
 		my_strcpy(t_FCB->filename, s);
 		t_FCB->size = 0;
 		t_FCB->starting_block = start_block;
-		t_FCB->modified_time = gtime;
+		t_FCB->modified_time = gtime++;
 		t_FCB->allocated_blocks = block_num_wanted;
-		t_FCB->first_edge = EDGE_IS_EMPTY;
+		t_FCB->first_edge_idx = EDGE_IDX_NULL;
 		// directory
-		dir_add_edge(fs, fs->cur_FCB.top(), t_FCB);
-		fs->cur_FCB.top()->size = calculate_directory_size(fs, fs->cur_FCB.top());
+		dir_add_edge(fs, fs->FCB_stack->top(), t_FCB);
+		fs->FCB_stack->top()->size = calculate_directory_size(fs, fs->FCB_stack->top());
+		fs->FCB_stack->top()->modified_time = gtime++;
 	}
 	t_FCB->open_mode = op;
 	//show_FCB(t_FCB);
@@ -337,7 +397,6 @@ __device__ u32 fs_open(FileSystem* fs, char* s, int op)
 
 __device__ void fs_read(FileSystem* fs, uchar* output, u32 size, u32 fp)
 {
-	gtime++;
 	FCB* t_FCB = fs->fcb[fp];
 	assert(t_FCB->open_mode == G_READ);
 	uchar* starting_address = DataBlockIdx_ptr(fs, t_FCB->starting_block);
@@ -347,24 +406,23 @@ __device__ void fs_read(FileSystem* fs, uchar* output, u32 size, u32 fp)
 
 __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp)
 {
-	gtime++;
 	FCB* t_FCB = fs->fcb[fp];
 	assert(t_FCB->open_mode == G_WRITE);
 	uchar* starting_address = DataBlockIdx_ptr(fs, t_FCB->starting_block);
 	my_memcpy(starting_address, input, size);
 	t_FCB->size = size;
-	t_FCB->modified_time = gtime;
+	t_FCB->modified_time = gtime++;
 	fs_close(fs, fp); // close file after write
 	//show_FCB(t_FCB);
 	return fp;
 }
 
-__host__ __device__ bool FCB_modified_time_cmp(const FCB* o1, const FCB* o2)
+inline __host__ __device__ bool FCB_modified_time_cmp(const FCB* o1, const FCB* o2)
 {
 	return o1->modified_time > o2->modified_time;
 }
 
-__host__ __device__ bool FCB_size_cmp(const FCB* o1, const FCB* o2)
+inline __host__ __device__ bool FCB_size_cmp(const FCB* o1, const FCB* o2)
 {
 	return o1->size > o2->size;
 }
@@ -372,17 +430,14 @@ __host__ __device__ bool FCB_size_cmp(const FCB* o1, const FCB* o2)
 
 __device__ void fs_gsys(FileSystem* fs, int op)
 {
-	gtime++;
 	if (op == LS_D || op == LS_S)
 	{
 		FCB* obs[1024];
 		int cnt = 0;
-		for (int i = 0; i < fs->FCB_ENTRIES; ++i)
+		for (u16 edge_idx = fs->FCB_stack->top()->first_edge_idx; edge_idx != EDGE_IDX_NULL; edge_idx = fs->edge[edge_idx]->next_edge)
 		{
-			if (!my_strcmp(fs->fcb[i]->filename, ""))
-			{
-				obs[cnt++] = (fs->fcb[i]);
-			}
+			FCB* child_FCB = fs->fcb[fs->edge[edge_idx]->FCB_idx];
+			obs[cnt++] = child_FCB;
 		}
 		if (op == LS_D) // order by modified time
 		{
@@ -406,14 +461,14 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 	}
 	else if (op == CD_P)
 	{
-		fs->cur_FCB.pop();
+		fs->FCB_stack->pop();
 	}
 	else if (op == PWD)
 	{
 		printf("CURRENT DIR: ");
-		for (int i = 0; i < fs->cur_FCB.cnt; ++i)
+		for (int i = 0; i < fs->FCB_stack->cnt; ++i)
 		{
-			printf("%s/", fs->cur_FCB.data[i]->filename);
+			printf("%s/", fs->FCB_stack->data[i]->filename);
 		}
 		printf("\n");
 	}
@@ -421,14 +476,12 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 
 __device__ void fs_gsys(FileSystem* fs, int op, char* s) // RM
 {
-	gtime++;
 	if (op == RM)
 	{
-		FCB* t_FCB = FindFile(fs, s, fs->cur_FCB.top());
-		assert(t_FCB != NULL);
-		assert(t_FCB->open_mode == G_READ || t_FCB->open_mode == G_WRITE);
-		Free_DataBlock_BitMap(fs, t_FCB);
-		RESET_FCB(t_FCB);
+		FCB* t_FCB = FindFile(fs, s, fs->FCB_stack->top());
+		remove_file(fs, t_FCB);
+		fs->FCB_stack->top()->size = calculate_directory_size(fs, fs->FCB_stack->top());
+		fs->FCB_stack->top()->modified_time = gtime++;
 	}
 	else if (op == MKDIR)
 	{
@@ -437,22 +490,26 @@ __device__ void fs_gsys(FileSystem* fs, int op, char* s) // RM
 		FCB* t_FCB = fs->fcb[t_FCB_idx];
 		my_strcpy(t_FCB->filename, s);
 		t_FCB->size = 0;
-		t_FCB->modified_time = gtime;
-		t_FCB->first_edge = EDGE_IS_EMPTY;
+		t_FCB->modified_time = gtime++;
+		t_FCB->first_edge_idx = EDGE_IDX_NULL;
 		t_FCB->open_mode = DIR;
 		// directory
-		dir_add_edge(fs, fs->cur_FCB.top(), t_FCB);
-		fs->cur_FCB.top()->size = calculate_directory_size(fs, fs->cur_FCB.top());
+		dir_add_edge(fs, fs->FCB_stack->top(), t_FCB);
+		fs->FCB_stack->top()->size = calculate_directory_size(fs, fs->FCB_stack->top());
+		fs->FCB_stack->top()->modified_time = gtime++;
 	}
 	else if (op == CD)
 	{
-		FCB* t_FCB = FindFile(fs, s, fs->cur_FCB.top());
+		FCB* t_FCB = FindFile(fs, s, fs->FCB_stack->top());
 		assert(t_FCB != NULL);
-		fs->cur_FCB.push(t_FCB);
+		fs->FCB_stack->push(t_FCB);
 	}
 	else if (op == RM_RF)
 	{
-		// to be continued
+		FCB* t_FCB = FindFile(fs, s, fs->FCB_stack->top());
+		remove_dir(fs, t_FCB);
+		fs->FCB_stack->top()->size = calculate_directory_size(fs, fs->FCB_stack->top());
+		fs->FCB_stack->top()->modified_time = gtime++;
 	}
 }
 

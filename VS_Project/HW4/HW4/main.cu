@@ -41,8 +41,10 @@ __global__ void mykernel(uchar* input, uchar* output) {
 
 	// Initilize the file system
 	FCB root_FCB;
+	STACK stack1;
 	FileSystem fs;
-	fs_init(&fs, volume, &root_FCB, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
+	printf("init start\n");
+	fs_init(&fs, volume, &root_FCB, &stack1, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
 		VOLUME_SIZE, PER_STORAGE_BLOCK_SIZE, MAX_PER_FILENAME_SIZE,
 		MAX_FILE_NUM, DATA_BLOCK_SIZE, DATA_BLOCK_VOLUME_OFFSET, DATA_BLOCK_NUM);
 
