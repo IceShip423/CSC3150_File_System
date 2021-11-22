@@ -25,8 +25,9 @@ typedef uint8_t u8;
 
 struct FCB { // 32B
 	char filename[20]; // 20B
-	u32 staring_block; // 4B
 	u32 size; // 4B, size is in byte 
+	u16 staring_block; // 2B
+	u16 FCB_idx; // 2B
 	u16 modified_time; // 2B
 	u8 open_mode; // 1B
 	u8 allocated_blocks; // 1B 
@@ -107,8 +108,7 @@ __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp);
 __device__ void fs_gsys(FileSystem* fs, int op);
 __device__ void fs_gsys(FileSystem* fs, int op, char* s);
 
-
-
+__device__ void compact(FileSystem* fs);
 __device__ void show_FCB( FCB* t_FCB);
 
 #endif
