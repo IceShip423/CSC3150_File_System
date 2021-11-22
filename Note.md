@@ -1,7 +1,3 @@
-## fs_open
+查找
 
-* f
-
-
-
-64位机
+dir size

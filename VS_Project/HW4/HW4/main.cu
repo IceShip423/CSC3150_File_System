@@ -40,7 +40,7 @@ __device__ void user_program_b(FileSystem* fs, uchar* input, uchar* output); // 
 __global__ void mykernel(uchar* input, uchar* output) {
 
 	// Initilize the file system
-	__device__ __managed__ FCB root_FCB;
+	FCB root_FCB;
 	FileSystem fs;
 	fs_init(&fs, volume, &root_FCB, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
 		VOLUME_SIZE, PER_STORAGE_BLOCK_SIZE, MAX_PER_FILENAME_SIZE,

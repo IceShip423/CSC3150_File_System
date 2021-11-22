@@ -28,14 +28,14 @@ typedef uint8_t u8;
 
 
 struct FCB { // 32B
-	u16 FCB_idx; // 2B, constant
-	u8 open_mode; // 1B
 	char filename[20]; // 20B
-	u16 first_edge; //  2B, only for directory
+	u16 FCB_idx; // 2B
+	u16 modified_time; // 2B
 	u16 size; // 2B, size is in byte 
 	u16 starting_block; // 2B
-	u16 modified_time; // 2B
+	u16 first_edge; //  2B
 	u8 allocated_blocks; // 1B 
+	u8 open_mode; // 1B
 };
 
 struct EDGE {
@@ -106,6 +106,7 @@ struct FileSystem {
 	uchar* volume;
 	BitMap* bitmap;
 	FCB* fcb[1024];
+	// dir
 	FCB* root_FCB;
 	STACK cur_FCB;
 	EDGE* edge[1024];
