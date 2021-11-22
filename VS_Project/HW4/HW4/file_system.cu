@@ -460,9 +460,14 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 	}
 	else if (op == PWD)
 	{
-		for (int i = 0; i < fs->FCB_stack->cnt; ++i)
+		if(fs->FCB_stack->cnt==1) 
 		{
-			printf("%s/", fs->FCB_stack->data[i]->filename);
+			printf("/\n");
+			return;
+		}
+		for (int i = 1; i < fs->FCB_stack->cnt; ++i)
+		{
+			printf("/%s", fs->FCB_stack->data[i]->filename);
 		}
 		printf("\n");
 	}
