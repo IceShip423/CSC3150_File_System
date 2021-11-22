@@ -11,8 +11,9 @@ typedef uint32_t u32;
 typedef uint16_t u16;
 typedef uint8_t u8;
 
-#define G_WRITE 1
 #define G_READ 0
+#define G_WRITE 1
+#define DIR 2 
 
 #define LS_D 0
 #define LS_S 1
@@ -23,14 +24,23 @@ typedef uint8_t u8;
 #define CD_P 6
 #define RM_RF 7
 
+#define EDGE_IS_EMPTY -1
+
+
 struct FCB { // 32B
-	char filename[20]; // 20B
-	u32 size; // 4B, size is in byte 
-	u16 staring_block; // 2B
-	u16 FCB_idx; // 2B
-	u16 modified_time; // 2B
+	u16 FCB_idx; // 2B, constant
 	u8 open_mode; // 1B
+	char filename[20]; // 20B
+	u16 first_edge; //  2B, only for directory
+	u16 size; // 2B, size is in byte 
+	u16 starting_block; // 2B
+	u16 modified_time; // 2B
 	u8 allocated_blocks; // 1B 
+};
+
+struct EDGE {
+	u16 FCB_idx;
+	u16 next_edge;
 };
 
 struct BitMap {
@@ -57,7 +67,6 @@ struct BitMap {
 	__device__ u32 FindFree(u32 start_bit_idx)
 	{
 		u32 i;
-		// printf("[%d %d]\n", data[0], data[1]);
 		for (i = start_bit_idx; i < 32768; ++i)
 		{
 			if (is_free(i)) break;
@@ -67,13 +76,29 @@ struct BitMap {
 	__device__ u32 FindAllocated(u32 start_bit_idx)
 	{
 		u32 i;
-		// printf("[%d %d]\n", data[0], data[1]);
 		for (i = start_bit_idx; i < 32768; ++i)
 		{
 			if (!is_free(i)) break;
 		}
 		return i;
-#undef t_BLOCK_NUM
+	}
+};
+
+struct STACK
+{
+	FCB* data[5];
+	u8 cnt=0;
+	inline __device__ FCB* top()
+	{
+		return data[cnt - 1];
+	}
+	inline __device__ void push(FCB* t_FCB)
+	{
+		data[cnt++] = t_FCB;
+	}
+	inline __device__ void pop()
+	{
+		cnt--;
 	}
 };
 
@@ -81,6 +106,9 @@ struct FileSystem {
 	uchar* volume;
 	BitMap* bitmap;
 	FCB* fcb[1024];
+	FCB* root_FCB;
+	STACK cur_FCB;
+	EDGE* edge[1024];
 
 	int SUPERBLOCK_SIZE;
 	int PER_FCB_SIZE;
@@ -97,7 +125,7 @@ struct FileSystem {
 
 
 
-__device__ void fs_init(FileSystem* fs, uchar* volume, int SUPERBLOCK_SIZE,
+__device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, int SUPERBLOCK_SIZE,
 	int PER_FCB_SIZE, int FCB_ENTRIES, int VOLUME_SIZE,
 	int PER_STORAGE_BLOCK_SIZE, int MAX_PER_FILENAME_SIZE,
 	int MAX_FILE_NUM, int DATA_BLOCK_SIZE, int DATA_BLOCK_VOLUME_OFFSET, int DATA_BLOCK_NUM);
@@ -109,6 +137,6 @@ __device__ void fs_gsys(FileSystem* fs, int op);
 __device__ void fs_gsys(FileSystem* fs, int op, char* s);
 
 __device__ void compact(FileSystem* fs);
-__device__ void show_FCB( FCB* t_FCB);
+__device__ void show_FCB(FCB* t_FCB);
 
 #endif
