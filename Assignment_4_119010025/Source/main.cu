@@ -24,31 +24,27 @@
 
 #define DATA_BLOCK_VOLUME_OFFSET 36864 //4096+32768
 
-#define DIR_STRUCTURE_SIZE 4096  // additional directory structure space
-
 // data input and output
 __device__ __managed__ uchar input[DATA_BLOCK_SIZE];
 __device__ __managed__ uchar output[DATA_BLOCK_SIZE];
 
 // volume (disk storage)
-__device__ __managed__ uchar volume[VOLUME_SIZE+DIR_STRUCTURE_SIZE];
+__device__ __managed__ uchar volume[VOLUME_SIZE];
 
 
 __device__ void user_program(FileSystem* fs, uchar* input, uchar* output);
-__device__ void user_program_b(FileSystem* fs, uchar* input, uchar* output); // bonus
+
 
 __global__ void mykernel(uchar* input, uchar* output) {
 
 	// Initilize the file system
-	FCB root_FCB;
-	STACK stack1;
 	FileSystem fs;
-	fs_init(&fs, volume, &root_FCB, &stack1, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
+	fs_init(&fs, volume, SUPERBLOCK_SIZE, PER_FCB_SIZE, FCB_ENTRIES,
 		VOLUME_SIZE, PER_STORAGE_BLOCK_SIZE, MAX_PER_FILENAME_SIZE,
 		MAX_FILE_NUM, DATA_BLOCK_SIZE, DATA_BLOCK_VOLUME_OFFSET, DATA_BLOCK_NUM);
 
 	// user program the access pattern for testing file operations
-	user_program_b(&fs, input, output);
+	user_program(&fs, input, output);
 }
 
 __host__ void write_binaryFile(char* fileName, void* buffer, int bufferSize)

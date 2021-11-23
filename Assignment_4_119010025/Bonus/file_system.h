@@ -25,10 +25,11 @@ typedef uint8_t u8;
 #define RM_RF 7
 
 
-struct FCB { // 32B
+struct FCB { // 34B
 	char filename[20]; // 20B
 	u16 FCB_idx; // 2B
-	u16 modified_time; // 2B
+	u16 modified_time; // 1B
+	u16 created_time; // 1B
 	u16 size; // 2B, size is in byte 
 	u16 starting_block; // 2B
 	u16 first_edge_idx; //  2B
@@ -47,11 +48,11 @@ struct BitMap {
 	{
 		return (data[bit_idx / 32] >> (bit_idx % 32)) & 1;// 1 is free
 	}
-	inline __device__ bool set_free(u32 bit_idx)
+	inline __device__ void set_free(u32 bit_idx)
 	{
 		data[bit_idx / 32] |= 1 << (bit_idx % 32);
 	}
-	inline __device__ bool set_allocated(u32 bit_idx)
+	inline __device__ void set_allocated(u32 bit_idx)
 	{
 		data[bit_idx / 32] &= ~(1 << (bit_idx % 32));
 	}
@@ -85,7 +86,7 @@ struct BitMap {
 struct STACK
 {
 	FCB* data[5];
-	u8 cnt=0;
+	u8 cnt;
 	inline __device__ FCB* top()
 	{
 		return data[cnt - 1];
@@ -122,8 +123,6 @@ struct FileSystem {
 };
 
 
-
-
 __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, STACK* FCB_stack, int SUPERBLOCK_SIZE,
 	int PER_FCB_SIZE, int FCB_ENTRIES, int VOLUME_SIZE,
 	int PER_STORAGE_BLOCK_SIZE, int MAX_PER_FILENAME_SIZE,
@@ -138,4 +137,6 @@ __device__ void fs_gsys(FileSystem* fs, int op, char* s);
 __device__ void compact(FileSystem* fs);
 __device__ void show_FCB(FCB* t_FCB);
 
+
 #endif
+

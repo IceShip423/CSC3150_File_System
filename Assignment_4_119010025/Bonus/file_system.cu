@@ -41,7 +41,6 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, STACK* FCB
 	fs->bitmap = (BitMap*)volume;
 	fs->bitmap->init();
 	int per_edge_size = sizeof(EDGE);
-	//printf("per_edge_size: %d\n", per_edge_size);
 	for (int i = 0; i < FCB_ENTRIES; ++i) // max edge entries = max FCB entries
 	{
 		// FCB
@@ -61,8 +60,7 @@ __device__ void fs_init(FileSystem* fs, uchar* volume, FCB* root_FCB, STACK* FCB
 	fs->FCB_stack->cnt = 0;
 	fs->FCB_stack->push(fs->root_FCB);
 	// struct correctness
-	//printf("%lld\n", sizeof(*(fs->fcb[0])));
-	assert(sizeof(*(fs->fcb[0])) == 32);
+	assert(sizeof(*(fs->fcb[0])) == 34);
 	assert(sizeof(*(fs->edge[0])) == 4);
 
 }
@@ -175,6 +173,7 @@ __device__ void RESET_FCB(FCB* t_FCB)
 	t_FCB->allocated_blocks = 0;
 	my_strcpy(t_FCB->filename, "");
 	t_FCB->modified_time = 0;
+	t_FCB->created_time = 0;
 	t_FCB->open_mode = G_READ;
 	t_FCB->size = 0;
 	t_FCB->starting_block = 0;
@@ -348,7 +347,7 @@ inline __device__ void show_FCB(FCB* t_FCB)
 
 #pragma region User APIs
 
-__device__ u32 fs_close(FileSystem* fs, u32 fp)
+__device__ void fs_close(FileSystem* fs, u32 fp)
 {
 	FCB* t_FCB = fs->fcb[fp];
 	t_FCB->open_mode = G_READ;
@@ -371,11 +370,11 @@ __device__ u32 fs_open(FileSystem* fs, char* s, int op)
 		u32 block_num_wanted = 1024 / fs->PER_STORAGE_BLOCK_SIZE;
 		u32 start_block = FindFreeBlock(fs, block_num_wanted);
 		u32 t_FCB_idx = FindFreeFCB(fs);
-		//printf("[new]  start_block:%d  t_FCB_idx:%d\n", start_block, t_FCB_idx);
 		t_FCB = fs->fcb[t_FCB_idx];
 		my_strcpy(t_FCB->filename, s);
 		t_FCB->size = 0;
 		t_FCB->starting_block = start_block;
+		t_FCB->created_time = gtime;
 		t_FCB->modified_time = gtime++;
 		t_FCB->allocated_blocks = block_num_wanted;
 		t_FCB->first_edge_idx = EDGE_IDX_NULL;
@@ -385,7 +384,6 @@ __device__ u32 fs_open(FileSystem* fs, char* s, int op)
 		fs->FCB_stack->top()->modified_time = gtime++;
 	}
 	t_FCB->open_mode = op;
-	//show_FCB(t_FCB);
 	return t_FCB->FCB_idx;
 }
 
@@ -396,7 +394,6 @@ __device__ void fs_read(FileSystem* fs, uchar* output, u32 size, u32 fp)
 	assert(t_FCB->open_mode == G_READ);
 	uchar* starting_address = DataBlockIdx_ptr(fs, t_FCB->starting_block);
 	my_memcpy(output, starting_address, size);
-	//show_FCB(t_FCB);
 }
 
 __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp)
@@ -408,18 +405,17 @@ __device__ u32 fs_write(FileSystem* fs, uchar* input, u32 size, u32 fp)
 	t_FCB->size = size;
 	t_FCB->modified_time = gtime++;
 	fs_close(fs, fp); // close file after write
-	//show_FCB(t_FCB);
 	return fp;
 }
 
 inline __host__ __device__ bool FCB_modified_time_cmp(const FCB* o1, const FCB* o2)
 {
-	return o1->modified_time > o2->modified_time;
+	return (o1->modified_time == o2->modified_time) ? (o1->created_time < o2->created_time) : (o1->modified_time > o2->modified_time);
 }
 
 inline __host__ __device__ bool FCB_size_cmp(const FCB* o1, const FCB* o2)
 {
-	return o1->size > o2->size;
+	return (o1->size == o2->size) ? (o1->created_time < o2->created_time) : (o1->size > o2->size);
 }
 
 
@@ -440,7 +436,9 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 			printf("===sort by modified time===\n");
 			for (int i = 0; i < cnt; ++i)
 			{
-				printf("%s\n", obs[i]->filename);
+				printf("%s", obs[i]->filename);
+				if(obs[i]->open_mode == DIR) printf(" d");
+				printf("\n");
 			}
 		}
 		else if (op == LS_S) // order by size
@@ -449,8 +447,9 @@ __device__ void fs_gsys(FileSystem* fs, int op)
 			printf("===sort by size===\n");
 			for (int i = 0; i < cnt; ++i)
 			{
-				printf("%s  %d\n", obs[i]->filename, obs[i]->size);
-				// show_FCB(obs[i]);
+				printf("%s %d", obs[i]->filename, obs[i]->size);
+				if(obs[i]->open_mode == DIR) printf(" d");
+				printf("\n");
 			}
 		}
 	}
@@ -484,11 +483,13 @@ __device__ void fs_gsys(FileSystem* fs, int op, char* s) // RM
 	}
 	else if (op == MKDIR)
 	{
+		assert(FindFile(fs, s, fs->FCB_stack->top())==NULL);
 		// allocate new position
 		u32 t_FCB_idx = FindFreeFCB(fs);
 		FCB* t_FCB = fs->fcb[t_FCB_idx];
 		my_strcpy(t_FCB->filename, s);
 		t_FCB->size = 0;
+		t_FCB->created_time = gtime;
 		t_FCB->modified_time = gtime++;
 		t_FCB->first_edge_idx = EDGE_IDX_NULL;
 		t_FCB->open_mode = DIR;
